@@ -3,6 +3,8 @@ import {
   Activity,
   AlertTriangle,
   ArrowUpRight,
+  BarChart3,
+  CalendarDays,
   Bell,
   BrainCircuit,
   Check,
@@ -13,11 +15,14 @@ import {
   Gauge,
   Menu,
   Radio,
+  Send,
+  Siren,
   Shield,
   ShieldCheck,
   Signal,
   SlidersHorizontal,
   Sparkles,
+  TrendingUp,
   Users,
   X,
   Zap,
@@ -65,6 +70,24 @@ const initialAlerts: Alert[] = [
 
 const navItems = ["Command center", "Exposure map", "People & rotations", "Audit log"];
 
+type DosePeriod = "Today" | "This week" | "This month" | "This year";
+
+type DoseSummary = {
+  total: string;
+  unit: string;
+  budget: string;
+  change: string;
+  rate: string;
+  bars: number[];
+};
+
+const doseSummaries: Record<DosePeriod, DoseSummary> = {
+  Today: { total: "0.42", unit: "mSv", budget: "1.00 mSv", change: "6% below expected", rate: "12.8 µSv/h", bars: [26, 35, 31, 48, 42, 58, 44, 62, 54, 70, 65, 52] },
+  "This week": { total: "2.10", unit: "mSv", budget: "5.00 mSv", change: "12% below expected", rate: "10.4 µSv/h avg", bars: [34, 42, 38, 58, 49, 63, 57, 66, 52, 68, 61, 73] },
+  "This month": { total: "8.40", unit: "mSv", budget: "20.00 mSv", change: "9% below expected", rate: "9.7 µSv/h avg", bars: [42, 48, 55, 46, 62, 51, 66, 59, 72, 64, 69, 76] },
+  "This year": { total: "86.70", unit: "mSv", budget: "240.00 mSv", change: "14% below expected", rate: "8.9 µSv/h avg", bars: [38, 44, 47, 51, 58, 54, 63, 68, 61, 72, 70, 78] },
+};
+
 function RiskRing({ value }: { value: number }) {
   const circumference = 2 * Math.PI * 41;
   return (
@@ -91,13 +114,58 @@ function RiskRing({ value }: { value: number }) {
   );
 }
 
+function DoseSnapshot({ period, onPeriodChange }: { period: DosePeriod; onPeriodChange: (period: DosePeriod) => void }) {
+  const summary = doseSummaries[period];
+  const periodEntries = Object.entries(doseSummaries) as [DosePeriod, DoseSummary][];
+
+  return (
+    <section className="rounded-2xl border border-[#dbe7e2] bg-white p-5 shadow-[0_8px_25px_rgba(31,78,75,.04)] md:p-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+        <div>
+          <div className="flex items-center gap-2">
+            <BarChart3 size={18} className="text-[#3c8a6e]" />
+            <h3 className="text-lg font-bold tracking-tight">Dose totals</h3>
+          </div>
+          <p className="mt-1 text-xs text-[#78918f]">Cumulative exposure against the configured safety budget.</p>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] font-semibold text-[#78918f]"><CalendarDays size={14} /> Updated 10:42 AST</div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {periodEntries.map(([name, value]) => (
+          <button key={name} onClick={() => onPeriodChange(name)} className={`rounded-xl border p-3 text-left transition-all ${period === name ? "border-[#8fc4b1] bg-[#edf8f2] shadow-sm" : "border-[#e6efeb] bg-[#fbfdfc] hover:border-[#b8d8ca]"}`}>
+            <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#76908d]">{name}</p>
+            <p className="mt-2 font-mono text-xl font-bold tracking-tight text-[#173f46]">{value.total} <span className="font-sans text-xs font-semibold text-[#78918f]">{value.unit}</span></p>
+            <p className="mt-1 text-[10px] font-semibold text-[#3f876c]">{value.change}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-5 grid gap-5 border-t border-[#edf2ef] pt-5 md:grid-cols-[.85fr_1.15fr] md:items-center">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[.14em] text-[#668582]">{period} snapshot</p>
+          <div className="mt-2 flex items-baseline gap-2"><span className="font-mono text-4xl font-bold tracking-[-.05em] text-[#173f46]">{summary.total}</span><span className="text-sm font-semibold text-[#78918f]">{summary.unit} / {summary.budget} budget</span></div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#e7efeb]"><div className="h-full rounded-full bg-[#4e9d7d] transition-all duration-500" style={{ width: `${Math.min(100, (Number(summary.total) / Number(summary.budget.split(" ")[0])) * 100)}%` }} /></div>
+          <div className="mt-2 flex justify-between text-[11px] text-[#78918f]"><span>Within guardrails</span><span className="font-mono">{summary.rate}</span></div>
+        </div>
+        <div className="flex h-24 items-end gap-1.5 rounded-xl bg-[#f5faf7] px-4 pb-3 pt-4">
+          {summary.bars.map((bar, index) => <div key={`${period}-${index}`} className="flex-1 rounded-t-md bg-[#8fc4b1] transition-all duration-500" style={{ height: `${bar}%`, opacity: index === summary.bars.length - 1 ? 1 : .55 + index / 30 }} />)}
+        </div>
+      </div>
+      <p className="mt-4 text-[11px] leading-relaxed text-[#879b98]">Illustrative prototype values. Calibrated dosimeter data and approved dose limits should be connected before clinical use.</p>
+    </section>
+  );
+}
+
 export function CommandCenter() {
   const [activeNav, setActiveNav] = useState("Command center");
   const [department, setDepartment] = useState("All departments");
+  const [dosePeriod, setDosePeriod] = useState<DosePeriod>("Today");
   const [alerts, setAlerts] = useState(initialAlerts);
   const [acknowledged, setAcknowledged] = useState<number[]>([]);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [toast, setToast] = useState("");
+  const [anomalyState, setAnomalyState] = useState<"stable" | "detected" | "escalated">("stable");
 
   const visibleAlerts = useMemo(
     () => department === "All departments" ? alerts : alerts.filter((a) => a.location.toLowerCase().includes(department.toLowerCase().split(" ")[0])),
@@ -117,6 +185,26 @@ export function CommandCenter() {
   const resolve = (id: number) => {
     setAlerts((current) => current.filter((a) => a.id !== id));
     notify("Alert resolved and added to the audit log");
+  };
+
+  const runLeakCheck = () => {
+    setAnomalyState("detected");
+    setAlerts((current) => current.some((alert) => alert.id === 4) ? current : [{
+      id: 4,
+      severity: "Critical",
+      title: "Unexpected dose-rate increase",
+      detail: "AI projects a possible shielding or equipment anomaly in Cath Lab 03 within the next 15 min.",
+      location: "Cath Lab 03 · Leak forecast",
+      time: "Now",
+      action: "Escalate to Radiation Safety Officer",
+    }, ...current]);
+    notify("Unexpected increase detected — review the leak forecast");
+  };
+
+  const escalateAnomaly = () => {
+    setAnomalyState("escalated");
+    setAcknowledged((current) => current.includes(4) ? current : [...current, 4]);
+    notify("Alert sent to the Radiation Safety Officer and incident response");
   };
 
   return (
@@ -156,6 +244,31 @@ export function CommandCenter() {
             <div className="rounded-2xl border border-[#dbe7e2] bg-white p-6 shadow-[0_8px_25px_rgba(31,78,75,.05)]"><div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#668582]">Predicted risk</p><BrainCircuit size={18} className="text-[#e28a42]" /></div><div className="mt-4 flex items-center gap-4"><RiskRing value={34} /><div><p className="text-sm font-bold text-[#315b60]">Stable trend</p><p className="mt-1 text-xs leading-relaxed text-[#78918f]">Next 60 min across 42 active staff</p></div></div><div className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#318065]"><ArrowUpRight size={14} /> 8% safer than last shift</div></div>
             <div className="rounded-2xl border border-[#dbe7e2] bg-[#fffaf4] p-6 shadow-[0_8px_25px_rgba(31,78,75,.05)]"><div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#826f60]">Active attention</p><AlertTriangle size={18} className="text-[#d7773c]" /></div><div className="mt-5 flex items-end gap-3"><span className="font-mono text-5xl font-bold tracking-[-.06em] text-[#8b4f31]">{alerts.length}</span><span className="mb-2 text-sm text-[#8c7061]">signals need review</span></div><div className="mt-4 flex items-center gap-2 text-xs font-semibold text-[#af6538]"><Clock3 size={14} /> Oldest signal · 14 min</div></div>
           </div>
+
+           <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
+             <DoseSnapshot period={dosePeriod} onPeriodChange={setDosePeriod} />
+             <section className={`rounded-2xl border p-5 shadow-[0_8px_25px_rgba(31,78,75,.04)] transition-colors md:p-6 ${anomalyState === "stable" ? "border-[#dbe7e2] bg-white" : anomalyState === "detected" ? "border-[#e7b08a] bg-[#fff8f1]" : "border-[#9acdb8] bg-[#edf8f2]"}`}>
+               <div className="flex items-start justify-between gap-4">
+                 <div>
+                   <div className="flex items-center gap-2"><Siren size={18} className={anomalyState === "stable" ? "text-[#d7773c]" : "text-[#b65e32]"} /><h3 className="text-lg font-bold tracking-tight">Unexpected increase & leak forecast</h3></div>
+                   <p className="mt-1 text-xs leading-relaxed text-[#78918f]">AI compares the live dose-rate with room, procedure, distance, and shielding context.</p>
+                 </div>
+                 <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.1em] ${anomalyState === "stable" ? "bg-[#edf5f1] text-[#4b876f]" : anomalyState === "detected" ? "bg-[#f7e1d1] text-[#a75931]" : "bg-[#d9eee4] text-[#397563]"}`}>{anomalyState === "stable" ? "No anomaly" : anomalyState === "detected" ? "Review now" : "RSO notified"}</span>
+               </div>
+               <div className="mt-5 grid grid-cols-3 gap-2">
+                 <div className="rounded-xl bg-white/75 p-3"><p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#78918f]">Now</p><p className="mt-2 font-mono text-lg font-bold text-[#173f46]">{anomalyState === "stable" ? "12.8" : "28.4"} <span className="font-sans text-[10px] text-[#78918f]">µSv/h</span></p></div>
+                 <div className="rounded-xl bg-white/75 p-3"><p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#78918f]">15 min forecast</p><p className="mt-2 font-mono text-lg font-bold text-[#173f46]">{anomalyState === "stable" ? "0.08" : "0.18"} <span className="font-sans text-[10px] text-[#78918f]">mSv</span></p></div>
+                 <div className="rounded-xl bg-white/75 p-3"><p className="text-[10px] font-bold uppercase tracking-[.1em] text-[#78918f]">Confidence</p><p className="mt-2 font-mono text-lg font-bold text-[#173f46]">{anomalyState === "stable" ? "92" : "87"}<span className="font-sans text-[10px] text-[#78918f]">%</span></p></div>
+               </div>
+               <div className="mt-4 flex items-start gap-2 rounded-xl border border-[#e7d8c9] bg-white/65 p-3 text-[11px] leading-relaxed text-[#775f50]"><TrendingUp size={15} className="mt-0.5 shrink-0 text-[#c26b35]" /><span>{anomalyState === "stable" ? "Run a live anomaly check to test for a sudden rise, shielding failure, or equipment leak pattern." : "Possible leak pattern: dose-rate is rising faster than the procedure baseline. Inspect shielding and room equipment now."}</span></div>
+               <div className="mt-4 flex flex-wrap gap-2">
+                 {anomalyState === "stable" && <button onClick={runLeakCheck} className="flex items-center gap-2 rounded-lg bg-[#174b53] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#0e3b43]"><BrainCircuit size={14} /> Run AI leak check</button>}
+                 {anomalyState === "detected" && <button onClick={escalateAnomaly} className="flex items-center gap-2 rounded-lg bg-[#b65e32] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#994a28]"><Send size={14} /> Escalate to Radiation Safety Officer</button>}
+                 {anomalyState === "escalated" && <div className="flex items-center gap-2 rounded-lg bg-[#d9eee4] px-3 py-2 text-xs font-bold text-[#397563]"><Check size={14} /> RSO and incident response notified</div>}
+                 <button onClick={() => notify("Forecast details opened")} className="rounded-lg border border-[#c8d9d2] bg-white/70 px-3 py-2 text-xs font-bold text-[#397361] hover:bg-white">View calculation details</button>
+               </div>
+             </section>
+           </div>
 
           <div className="mt-8 grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
             <section className="rounded-2xl border border-[#dbe7e2] bg-white p-5 shadow-[0_8px_25px_rgba(31,78,75,.04)] md:p-6"><div className="flex items-start justify-between"><div><div className="flex items-center gap-2"><h3 className="text-lg font-bold tracking-tight">Live alerts</h3><span className="rounded-full bg-[#f7e4d4] px-2 py-0.5 text-[11px] font-bold text-[#a6592f]">{visibleAlerts.length} open</span></div><p className="mt-1 text-xs text-[#78918f]">Prioritized by projected exposure, not just current dose.</p></div><button onClick={() => notify("Alert feed refreshed")} className="rounded-lg p-2 text-[#78918f] hover:bg-[#f1f6f3]"><Activity size={18} /></button></div><div className="mt-5 space-y-3">{visibleAlerts.length === 0 ? <div className="rounded-xl border border-dashed border-[#bfd7cf] bg-[#f6fbf8] px-5 py-10 text-center"><ShieldCheck className="mx-auto text-[#54a486]" size={28} /><p className="mt-3 text-sm font-bold">All clear for this view</p><p className="mt-1 text-xs text-[#78918f]">No open signals in {department}.</p></div> : visibleAlerts.map((alert) => <div key={alert.id} className={`rounded-xl border p-4 transition-all ${acknowledged.includes(alert.id) ? "border-[#c6dfd3] bg-[#f5fbf7]" : "border-[#e5ece8] bg-[#fcfdfc]"}`}><div className="flex gap-3"><div className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${alert.severity === "Critical" ? "bg-[#f9e4d7] text-[#b65e32]" : "bg-[#f7efd9] text-[#ae7a2f]"}`}><AlertTriangle size={16} /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className={`text-[10px] font-bold uppercase tracking-[.12em] ${alert.severity === "Critical" ? "text-[#b65e32]" : "text-[#ae7a2f]"}`}>{alert.severity}</span><span className="text-[11px] text-[#9aafac]">{alert.time}</span></div><p className="mt-1 text-sm font-bold">{alert.title}</p><p className="mt-1 text-xs leading-relaxed text-[#718a88]">{alert.detail}</p><div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-[#668582]"><span>{alert.location}</span><span className="text-[#bfd0cc]">•</span><span>Suggested: {alert.action}</span></div></div><div className="flex shrink-0 flex-col gap-2"><button onClick={() => acknowledge(alert.id)} disabled={acknowledged.includes(alert.id)} className="rounded-lg border border-[#bdd8cb] px-2.5 py-1.5 text-[11px] font-bold text-[#397361] transition-colors hover:bg-[#eaf5ef] disabled:cursor-default disabled:border-transparent disabled:bg-[#e8f4ed]">{acknowledged.includes(alert.id) ? <span className="flex items-center gap-1"><Check size={12} /> In review</span> : "Acknowledge"}</button><button onClick={() => resolve(alert.id)} className="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-[#8ba09d] hover:bg-[#f2f6f4]">Resolve</button></div></div></div>)}</div></section>

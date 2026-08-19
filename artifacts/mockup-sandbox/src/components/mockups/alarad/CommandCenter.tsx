@@ -13,6 +13,7 @@ import {
   Clock3,
   Crosshair,
   Gauge,
+  MessageCircle,
   Menu,
   Radio,
   Send,
@@ -88,6 +89,56 @@ const doseSummaries: Record<DosePeriod, DoseSummary> = {
   "This year": { total: "86.70", unit: "mSv", budget: "240.00 mSv", change: "14% below expected", rate: "8.9 µSv/h avg", bars: [38, 44, 47, 51, 58, 54, 63, 68, 61, 72, 70, 78] },
 };
 
+type AiMessage = {
+  role: "assistant" | "user";
+  text: string;
+  sources?: KnowledgeSource[];
+};
+
+type KnowledgeSource = {
+  title: string;
+  url: string;
+  keywords: string[];
+  answer: string;
+};
+
+const knowledgeBase: KnowledgeSource[] = [
+  { title: "NRRC — Compliance with Dose Limits", url: "https://istitlaa.ncc.gov.sa/ar/energy/nrrc/compliancewithdoeslimits/Documents/Compliance%20with%20Dose%20Limits-NRRC-R-01-SR02.pdf", keywords: ["dose limit", "dose limits", "limit", "حد الجرعة", "حدود الجرعات", "جرعة"], answer: "Dose-limit decisions should follow the applicable NRRC requirements and the hospital’s approved radiation-protection program. ALARAD can flag proximity to a configured limit, but the Radiation Safety Officer must confirm the applicable limit and action." },
+  { title: "IAEA GSR Part 3 — Radiation Protection and Safety", url: "https://www-pub.iaea.org/MTCD/Publications/PDF/Pub1578_web-57265295.pdf", keywords: ["radiation protection", "safety", "ionizing", "protection", "الحماية من الإشعاع", "السلامة"], answer: "IAEA GSR Part 3 provides the international framework for radiation protection and safety of radiation sources. In this prototype, it supports the principles of monitoring, controlled exposure, optimization, and human review." },
+  { title: "IAEA SSG-46 — Medical Uses of Ionizing Radiation", url: "https://www.iaea.org/publications/11102/radiation-protection-andsafety-in-medical-uses-of-ionizing-radiation", keywords: ["medical", "hospital", "clinical", "procedure", "medical uses", "طبي", "مستشفى", "إجراء"], answer: "IAEA SSG-46 addresses radiation protection and safety in medical uses of ionizing radiation, including responsibilities, monitoring, optimization, and safe clinical practice." },
+  { title: "NRRC — Nuclear Regulations and Executive Regulations", url: "https://nrrc.gov.sa/en/legal-framework/nuclear-regulations-and-executiveregulations/", keywords: ["nrrc", "regulation", "regulations", "legal", "law", "نظام", "لائحة", "الهيئة"], answer: "The NRRC legal framework is the authoritative Saudi reference for nuclear and radiation regulations. Any operational escalation or compliance decision should be checked against the current NRRC requirements." },
+  { title: "NRRC — Quality Control for Medical Radiological Equipment", url: "https://istitlaa.ncc.gov.sa/en/energy/nrrc/establishmentandimplementationofqcprogram/Documents/Establishment%20and%20Implementation%20of%20Quality%20Control%20(QC)%20Program%20for%20Medical%20Radiological%20Equipment-2025_Istitlaa.pdf", keywords: ["quality control", "qc", "equipment", "calibration", "جودة", "معايرة", "معدات"], answer: "The NRRC quality-control reference covers establishment and implementation of QC programs for medical radiological equipment. A suspected unexpected dose increase should be investigated with equipment and shielding checks by qualified staff." },
+  { title: "JKSUS — Occupational Radiation Exposure in Saudi MOH Hospitals", url: "https://jksus.org/occupational-radiationexposure-among-diagnostic-radiology-workers-in-the-saudi-ministry-of-health-hospitals-and-medical-centers-a-five-year-national-retrospective-study/", keywords: ["occupational", "worker", "workers", "staff", "employee", "exposure study", "موظف", "عامل", "العاملين"], answer: "This five-year Saudi MOH study provides context on occupational radiation exposure among diagnostic-radiology workers. It supports ALARAD’s focus on staff trends, rotations, and early warnings rather than waiting for a limit breach." },
+  { title: "NCA — Operational Technology Cybersecurity Controls", url: "https://cdn.nca.gov.sa/api/files/public/upload/071d52fc-014b-4f15-84ce-1289f3f5c3a9_Operational-Technology-Cybersecurity-Controls-Methodogy-andMapping-Annex.pdf", keywords: ["cyber", "cybersecurity", "security", "operational technology", "ot", "أمن", "سيبراني", "الأمن السيبراني"], answer: "The NCA OT cybersecurity controls reference is relevant to protecting connected monitoring and hospital operational technology. ALARAD should use access control, logging, secure integrations, and incident handling around device data." },
+  { title: "SDAIA/NDMO — Data Management and Personal Data Protection Standards", url: "https://sdaia.gov.sa/ndmo/Files/PoliciesEn001.pdf?utm_source=chatgpt.com", keywords: ["data", "privacy", "personal", "governance", "patient", "بيانات", "خصوصية", "حوكمة", "مريض"], answer: "SDAIA/NDMO standards are the relevant reference for data management and personal-data protection. Patient and staff data should be minimized, access-controlled, auditable, and handled according to the hospital’s approved governance process." },
+  { title: "ICRP Publication 103 — Recommendations", url: "https://www.icrp.org/docs/icrp_publication_103-annals_of_the_icrp_37(2-4)-free_extract.pdf", keywords: ["icrp", "optimization", "justification", "alara", "principle", "تحسين", "تبرير"], answer: "ICRP Publication 103 is a foundational reference for radiation-protection recommendations, including justification, optimization, and keeping exposure as low as reasonably achievable (ALARA)." },
+  { title: "ITU AI Ready — Readiness Framework Report 2.0", url: "https://www.itu.int/dms_pub/itu-t/opb/ai4g/T-AI4GAI4GOOD-2025-6-PDF-E.pdf", keywords: ["ai readiness", "readiness", "governance", "fairness", "ai", "ذكاء اصطناعي", "جاهزية", "إنصاف"], answer: "The ITU AI Ready framework supports assessing AI readiness through governance, people, data, infrastructure, and responsible-use practices. ALARAD keeps recommendations explainable and subject to human review." },
+  { title: "ITU AI for Good — Saudi AI Readiness Hackathon", url: "https://aiforgood.itu.int/event/ai-readiness-hackathon-kingdom-of-saudiarabia/", keywords: ["hackathon", "itu", "ai for good", "هاكاثون", "الاتحاد"], answer: "The ITU AI for Good hackathon page is the official event reference for the Saudi AI-readiness challenge that motivated this ALARAD prototype." },
+];
+
+function getAssistantReply(question: string, anomalyState: "stable" | "detected" | "escalated"): { text: string; sources?: KnowledgeSource[] } {
+  const normalized = question.toLowerCase();
+  const rankedSources = knowledgeBase
+    .map((source) => ({ source, score: source.keywords.reduce((score, keyword) => score + (normalized.includes(keyword) ? (keyword.length > 5 ? 2 : 1) : 0), 0) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map(({ source }) => source);
+  if (rankedSources.length > 0) return { text: rankedSources.map((source) => source.answer).join(" "), sources: rankedSources };
+  if (normalized.includes("leak") || normalized.includes("تسرب")) {
+    return { text: anomalyState === "stable"
+      ? "No confirmed leak pattern is active. The current rate is 12.8 µSv/h and the 15-minute forecast is 0.08 mSv. Run the AI leak check, then ask the Radiation Safety Officer to review any anomaly before escalation."
+      : "A possible leak pattern is under review in Cath Lab 03. The calculated rate is 28.4 µSv/h with a 15-minute forecast of 0.18 mSv. Inspect shielding and equipment, then escalate to the Radiation Safety Officer." };
+  }
+  if (normalized.includes("dose") || normalized.includes("جرع") || normalized.includes("safe")) {
+    return { text: "The current demo snapshot is 0.42 mSv today, 2.10 mSv this week, 8.40 mSv this month, and 86.70 mSv this year. These are illustrative values and must be replaced with calibrated dosimeter data and approved limits before clinical use." };
+  }
+  if (normalized.includes("risk") || normalized.includes("خطر")) {
+    return { text: "The current risk index is 34 with a stable trend across 42 active staff. The highest-priority signal is rising scatter exposure in Cath Lab 03, where a shielded-position rotation is recommended." };
+  }
+  return { text: "I could not find a matching topic in the linked ALARAD Knowledge Base. I can summarize dose totals, explain the current risk, check for a possible leak pattern, or suggest the next safety action. Ask about dose limits, radiation protection, equipment QC, privacy, cybersecurity, or AI governance." };
+}
+
 function RiskRing({ value }: { value: number }) {
   const circumference = 2 * Math.PI * 41;
   return (
@@ -157,6 +208,102 @@ function DoseSnapshot({ period, onPeriodChange }: { period: DosePeriod; onPeriod
   );
 }
 
+function WorkspacePanel({ activeNav, onBack, onOpenAi }: { activeNav: string; onBack: () => void; onOpenAi: () => void }) {
+  const panelCopy = {
+    "Exposure map": {
+      eyebrow: "Live room telemetry",
+      title: "See where exposure is building.",
+      detail: "Room-level signals combine dose-rate, scatter, shielding availability, and procedure context so the safety team can act before a threshold is crossed.",
+    },
+    "People & rotations": {
+      eyebrow: "Workforce safety",
+      title: "Keep every rotation inside guardrails.",
+      detail: "Review who is inside each room, who is approaching their rolling baseline, and which preventive rotation ALARAD recommends next.",
+    },
+    "Audit log": {
+      eyebrow: "Decision history",
+      title: "Make every safety decision traceable.",
+      detail: "The audit trail records alerts, AI recommendations, human review, escalation, and resolution for compliance and incident learning.",
+    },
+  }[activeNav as "Exposure map" | "People & rotations" | "Audit log"];
+
+  return (
+    <div className="mx-auto max-w-[1500px] p-5 md:p-9">
+      <section className="overflow-hidden rounded-3xl border border-[#dbe7e2] bg-white shadow-[0_12px_35px_rgba(31,78,75,.06)]">
+        <div className="flex flex-col justify-between gap-6 bg-[#174b53] p-6 text-[#e8f4ef] md:flex-row md:items-end md:p-8">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#a4cec0]">{panelCopy?.eyebrow}</p>
+            <h2 className="mt-3 max-w-xl text-3xl font-bold tracking-[-.04em] md:text-4xl">{panelCopy?.title}</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#b7d4ce]">{panelCopy?.detail}</p>
+          </div>
+          <button onClick={onBack} className="rounded-xl bg-[#e1eeea] px-4 py-2.5 text-xs font-bold text-[#123d45] transition hover:bg-white">Back to command center</button>
+        </div>
+
+        {activeNav === "Exposure map" && (
+          <div className="grid gap-4 p-6 md:grid-cols-3 md:p-8">
+            {[["Cath Lab 03", "Elevated", "28.4 µSv/h", "Inspect mobile shielding", "bg-[#fff3e9] text-[#a75931]"], ["CT-2", "Within baseline", "7.2 µSv/h", "Rotation on schedule", "bg-[#edf8f2] text-[#397563]"], ["Hot Lab", "Signal delayed", "No recent rate", "Check badge R-184", "bg-[#fff8e1] text-[#9b742c]"]].map(([room, status, rate, action, tone]) => (
+              <div key={room} className="rounded-2xl border border-[#e4ece8] p-5">
+                <div className="flex items-center justify-between"><span className="text-sm font-bold">{room}</span><Signal size={16} className="text-[#4d917b]" /></div>
+                <div className={`mt-5 inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.1em] ${tone}`}>{status}</div>
+                <p className="mt-4 font-mono text-2xl font-bold text-[#173f46]">{rate}</p>
+                <p className="mt-1 text-xs text-[#78918f]">Current room signal</p>
+                <button onClick={onOpenAi} className="mt-5 text-xs font-bold text-[#28715e] hover:underline">{action} <ArrowUpRight className="inline" size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeNav === "People & rotations" && (
+          <div className="grid gap-3 p-6 md:grid-cols-2 md:p-8">
+            {[["Dr. Noura Al-Harbi", "Cath Lab 03", "Approaching threshold", "Rotate in 12 min", "text-[#b65e32]"], ["Omar Al-Qahtani", "CT-2", "Within baseline", "Next rotation 14:00", "text-[#397563]"], ["Maha Al-Shehri", "Hot Lab", "Context delayed", "Check badge R-184", "text-[#9b742c]"], ["Sara Al-Dosari", "Radiation Therapy", "Within baseline", "No action needed", "text-[#397563]"]].map(([person, room, status, action, color]) => (
+              <div key={person} className="flex items-center gap-4 rounded-2xl border border-[#e4ece8] p-4">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#dbeee8] text-sm font-bold text-[#21545a]">{person.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div>
+                <div className="min-w-0 flex-1"><p className="text-sm font-bold">{person}</p><p className="mt-1 text-xs text-[#78918f]">{room} · {status}</p></div>
+                <span className={`hidden text-right text-[11px] font-bold sm:block ${color}`}>{action}</span>
+              </div>
+            ))}
+            <button onClick={onOpenAi} className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-[#a9cfc0] bg-[#f4faf7] p-4 text-xs font-bold text-[#397563] hover:bg-[#edf8f2]"><BrainCircuit size={16} /> Ask ALARAD to suggest a safer rotation</button>
+          </div>
+        )}
+
+        {activeNav === "Audit log" && (
+          <div className="space-y-3 p-6 md:p-8">
+            {[["10:42:18 AST", "Human review opened", "Dr. Amina acknowledged the scatter exposure recommendation for Cath Lab 03.", "Reviewed"], ["10:40:02 AST", "AI forecast updated", "Time-series model recalculated the next 60-minute risk using room and procedure context.", "System"], ["10:36:44 AST", "Shielding checklist added", "Mobile shielding was added to the next Cath Lab 03 procedure checklist.", "Action"]].map(([time, title, detail, tag]) => (
+              <div key={time} className="flex gap-4 rounded-2xl border border-[#e4ece8] p-4">
+                <div className="flex w-24 shrink-0 items-start gap-2 text-[11px] font-mono text-[#78918f]"><Clock3 size={14} />{time}</div>
+                <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-bold">{title}</p><span className="rounded-full bg-[#edf5f1] px-2 py-0.5 text-[10px] font-bold text-[#4b876f]">{tag}</span></div><p className="mt-1 text-xs leading-relaxed text-[#78918f]">{detail}</p></div>
+              </div>
+            ))}
+            <div className="flex items-center gap-2 rounded-2xl bg-[#f5faf7] p-4 text-xs text-[#65837f]"><ShieldCheck size={16} className="text-[#4c9a7d]" /> Every AI suggestion remains linked to a human review event.</div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function AiCopilot({ messages, input, onInputChange, onAsk, onClose, onPrompt }: { messages: AiMessage[]; input: string; onInputChange: (value: string) => void; onAsk: (question: string) => void; onClose: () => void; onPrompt: (question: string) => void }) {
+  const quickPrompts = ["What is the current risk?", "Is there a possible leak?", "Summarize dose totals"];
+
+  return (
+    <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[430px] flex-col border-l border-[#cfe0d9] bg-[#f7fbf9] shadow-2xl">
+      <div className="flex items-center justify-between border-b border-[#dbe7e2] bg-[#174b53] px-5 py-4 text-white">
+        <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-[#e28a42] text-[#123d45]"><BrainCircuit size={20} /></div><div><p className="text-sm font-bold">ALARAD AI copilot</p><p className="text-[10px] uppercase tracking-[.14em] text-[#a7c7c2]">Safety context assistant</p></div></div>
+        <button onClick={onClose} className="rounded-lg p-2 text-white/70 hover:bg-white/10 hover:text-white"><X size={19} /></button>
+      </div>
+      <div className="flex-1 space-y-4 overflow-y-auto p-5">
+        <div className="rounded-2xl border border-[#c8dfd5] bg-white p-4 text-xs leading-relaxed text-[#5f7d79]"><p className="font-bold text-[#245c5f]">Ask about the current safety picture.</p><p className="mt-1">I can explain dose totals, identify risk signals, or prepare the next human-review action.</p></div>
+        <div className="flex flex-wrap gap-2">{quickPrompts.map((prompt) => <button key={prompt} onClick={() => onPrompt(prompt)} className="rounded-full border border-[#b9d8ca] bg-white px-3 py-2 text-[11px] font-semibold text-[#397361] hover:bg-[#edf8f2]">{prompt}</button>)}</div>
+         {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[92%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${message.role === "user" ? "rounded-br-md bg-[#174b53] text-white" : "rounded-bl-md border border-[#dbe7e2] bg-white text-[#527276]"}`}><p>{message.text}</p>{message.sources && message.sources.length > 0 && <div className="mt-3 border-t border-[#e5eeea] pt-2"><p className="mb-1 text-[10px] font-bold uppercase tracking-[.1em] text-[#7a9690]">Knowledge Base sources</p><div className="space-y-1">{message.sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="block truncate text-[10px] font-semibold text-[#28715e] hover:underline">{source.title} ↗</a>)}</div></div>}</div></div>)}
+      </div>
+      <form onSubmit={(event) => { event.preventDefault(); onAsk(input); }} className="border-t border-[#dbe7e2] bg-white p-4">
+        <div className="flex items-center gap-2 rounded-xl border border-[#cfe0d9] bg-[#f7fbf9] p-2 focus-within:border-[#8fc4b1]"><input value={input} onChange={(event) => onInputChange(event.target.value)} placeholder="Ask about exposure or risk..." className="min-w-0 flex-1 bg-transparent px-2 text-xs text-[#173f46] outline-none" /><button type="submit" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#174b53] text-white hover:bg-[#0e3b43]"><Send size={15} /></button></div>
+        <p className="mt-2 text-[10px] leading-relaxed text-[#8aa09d]">AI copilot is a decision-support prototype. Confirm recommendations with your Radiation Safety Officer.</p>
+      </form>
+    </aside>
+  );
+}
+
 export function CommandCenter() {
   const [activeNav, setActiveNav] = useState("Command center");
   const [department, setDepartment] = useState("All departments");
@@ -166,6 +313,9 @@ export function CommandCenter() {
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [toast, setToast] = useState("");
   const [anomalyState, setAnomalyState] = useState<"stable" | "detected" | "escalated">("stable");
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiInput, setAiInput] = useState("");
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([{ role: "assistant", text: "I’m ready to help interpret the current ALARAD safety context." }]);
 
   const visibleAlerts = useMemo(
     () => department === "All departments" ? alerts : alerts.filter((a) => a.location.toLowerCase().includes(department.toLowerCase().split(" ")[0])),
@@ -207,6 +357,14 @@ export function CommandCenter() {
     notify("Alert sent to the Radiation Safety Officer and incident response");
   };
 
+  const askAI = (question: string) => {
+    const trimmed = question.trim();
+    if (!trimmed) return;
+     const reply = getAssistantReply(trimmed, anomalyState);
+     setAiMessages((current) => [...current, { role: "user", text: trimmed }, { role: "assistant", text: reply.text, sources: reply.sources }]);
+    setAiInput("");
+  };
+
   return (
     <main className="min-h-[100dvh] bg-[#f4f8f6] text-[#173c43] selection:bg-[#f0c49a]">
       <div className="pointer-events-none fixed inset-0 opacity-[.035]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.65'/%3E%3C/svg%3E\")" }} />
@@ -218,7 +376,7 @@ export function CommandCenter() {
         <div className="mt-9 text-[10px] font-bold uppercase tracking-[.2em] text-[#78a7a3]">Workspace</div>
         <nav className="mt-3 space-y-1">
           {navItems.map((item, i) => (
-            <button key={item} onClick={() => { setActiveNav(item); setShowMobileNav(false); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition-colors ${activeNav === item ? "bg-[#e1eeea] font-semibold text-[#123d45]" : "text-[#b4ceca] hover:bg-white/10 hover:text-white"}`}>
+            <button key={item} onClick={() => { setActiveNav(item); setShowMobileNav(false); if (item !== "Command center") notify(`${item} opened`); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition-colors ${activeNav === item ? "bg-[#e1eeea] font-semibold text-[#123d45]" : "text-[#b4ceca] hover:bg-white/10 hover:text-white"}`}>
               {i === 0 ? <Gauge size={17} /> : i === 1 ? <Signal size={17} /> : i === 2 ? <Users size={17} /> : <Activity size={17} />}{item}
               {i === 0 && alerts.length > 0 && <span className="ml-auto rounded-full bg-[#e28a42] px-2 py-0.5 text-[10px] font-bold text-[#123d45]">{alerts.length}</span>}
             </button>
@@ -233,10 +391,12 @@ export function CommandCenter() {
       <section className="md:ml-72">
         <header className="sticky top-0 z-20 flex h-[76px] items-center justify-between border-b border-[#dbe7e2] bg-[#f4f8f6]/90 px-5 backdrop-blur-xl md:px-9">
           <div className="flex items-center gap-3"><button className="rounded-lg p-2 hover:bg-[#e8f0ed] md:hidden" onClick={() => setShowMobileNav(true)}><Menu size={21} /></button><div><p className="text-xs font-semibold uppercase tracking-[.18em] text-[#74908f]">King Faisal Specialist Hospital</p><h1 className="mt-1 text-lg font-bold tracking-tight">Good morning, Dr. Amina</h1></div></div>
-          <div className="flex items-center gap-3"><div className="hidden items-center gap-2 rounded-full border border-[#cce1da] bg-[#ecf7f1] px-3 py-2 text-xs font-semibold text-[#27725c] sm:flex"><span className="h-2 w-2 animate-pulse rounded-full bg-[#41a477]" /> Live monitoring</div><button onClick={() => notify("No new notifications")} className="relative rounded-xl border border-[#dbe7e2] bg-white p-2.5 text-[#527276] hover:border-[#a9c9c0]"><Bell size={18} /><span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#f4f8f6] bg-[#e28a42]" /></button><div className="grid h-9 w-9 place-items-center rounded-full bg-[#d2e2dd] text-xs font-bold text-[#21545a]">AA</div></div>
+          <div className="flex items-center gap-2"><button onClick={() => setAiOpen(true)} className="flex items-center gap-2 rounded-xl border border-[#b9d8ca] bg-[#edf8f2] px-3 py-2.5 text-xs font-bold text-[#28715e] transition hover:bg-[#dcefe6]"><MessageCircle size={16} /><span className="hidden sm:inline">Ask ALARAD AI</span></button><div className="hidden items-center gap-2 rounded-full border border-[#cce1da] bg-[#ecf7f1] px-3 py-2 text-xs font-semibold text-[#27725c] sm:flex"><span className="h-2 w-2 animate-pulse rounded-full bg-[#41a477]" /> Live monitoring</div><button onClick={() => notify("No new notifications")} className="relative rounded-xl border border-[#dbe7e2] bg-white p-2.5 text-[#527276] hover:border-[#a9c9c0]"><Bell size={18} /><span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[#f4f8f6] bg-[#e28a42]" /></button><div className="grid h-9 w-9 place-items-center rounded-full bg-[#d2e2dd] text-xs font-bold text-[#21545a]">AA</div></div>
         </header>
 
-        <div className="mx-auto max-w-[1500px] p-5 md:p-9">
+         {activeNav !== "Command center" && <WorkspacePanel activeNav={activeNav} onBack={() => setActiveNav("Command center")} onOpenAi={() => setAiOpen(true)} />}
+
+         <div className={`mx-auto max-w-[1500px] p-5 md:p-9 ${activeNav === "Command center" ? "" : "hidden"}`}>
           <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-end"><div><div className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#62807e]"><span className="h-1.5 w-1.5 rounded-full bg-[#e28a42]" /> Monday, 14 October 2024 <span className="text-[#adc0bd]">/</span> Shift A · 07:00–15:00</div><h2 className="max-w-2xl text-3xl font-bold tracking-[-.04em] text-[#123d45] md:text-4xl">Prevent the next unsafe exposure.</h2><p className="mt-2 max-w-xl text-sm leading-relaxed text-[#62807e]">A live view of radiation risk across your teams, rooms, and procedures — before thresholds are crossed.</p></div><div className="flex items-center gap-2"><SlidersHorizontal size={16} className="text-[#78918f]" /><select value={department} onChange={(e) => setDepartment(e.target.value)} className="rounded-xl border border-[#cddfd9] bg-white px-4 py-2.5 text-sm font-semibold text-[#315b60] outline-none focus:ring-2 focus:ring-[#9ccabe]"><option>All departments</option><option>Cath Lab</option><option>Imaging</option><option>Nuclear Medicine</option></select></div></div>
 
           <div className="grid gap-4 lg:grid-cols-[1.45fr_.85fr_.85fr]">
@@ -280,7 +440,8 @@ export function CommandCenter() {
           <footer className="mt-8 flex flex-col justify-between gap-2 border-t border-[#dbe7e2] pt-5 text-[11px] text-[#8aa09d] sm:flex-row"><span>ALARAD decision-support prototype · v0.8.4</span><span className="flex items-center gap-1.5"><ShieldCheck size={13} /> No device measurement claim · For clinical review only</span></footer>
         </div>
       </section>
-      {toast && <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-[#123d45] px-4 py-3 text-xs font-semibold text-white shadow-xl"><Check size={15} className="text-[#8ed0b9]" />{toast}<button onClick={() => setToast("")} className="ml-2 text-white/60 hover:text-white"><X size={14} /></button></div>}
+      {aiOpen && <AiCopilot messages={aiMessages} input={aiInput} onInputChange={setAiInput} onAsk={askAI} onPrompt={askAI} onClose={() => setAiOpen(false)} />}
+      {toast && <div className="fixed bottom-5 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-[#123d45] px-4 py-3 text-xs font-semibold text-white shadow-xl"><Check size={15} className="text-[#8ed0b9]" />{toast}<button onClick={() => setToast("")} className="ml-2 text-white/60 hover:text-white"><X size={14} /></button></div>}
     </main>
   );
 }

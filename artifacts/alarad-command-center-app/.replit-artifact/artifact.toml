@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "ALARAD Command Center"
+description = "A functional radiation-safety command center for hospitals, with interactive exposure dashboards, dose calculations, anomaly and leak forecasting, staff rotation views, audit history, and a knowledge-grounded AI safety assistant."
+version = "1.0.0"
+id = "artifacts/alarad-command-center-app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18268
+
+[services.development]
+run = "pnpm --filter @workspace/alarad-command-center-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/alarad-command-center-app", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/alarad-command-center-app/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18268"
+BASE_PATH = "/"
